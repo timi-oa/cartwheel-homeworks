@@ -386,6 +386,15 @@ def get_policy(wrapper: RunContextWrapper[AuthContext], policy_id: str) -> dict[
 
 
 @function_tool
+def get_return_window(wrapper: RunContextWrapper[AuthContext], store_id: int) -> dict[str, Any]:
+    """Get the return window in days for one store, with the policy id to cite.
+
+    A store's own override takes precedence over the platform default.
+    """
+    return _call(wrapper, hw_tools.get_return_window, store_id)
+
+
+@function_tool
 def search_products(
     wrapper: RunContextWrapper[AuthContext],
     query: str,
@@ -434,6 +443,7 @@ def find_order(
 _COMMON_TOOLS = [
     search_help_center,
     get_policy,
+    get_return_window,
     search_products,
     get_order,
     issue_refund,

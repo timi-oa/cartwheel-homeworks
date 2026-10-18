@@ -25,6 +25,7 @@ import rapidfuzz
 
 from agent import agent, db
 from agent.auth import AuthContext, can_cancel_order, permission_denied
+from agent.config import load_facts
 import agent.helpcenter
 import agent.auth as auth
 from agent.killswitch import kill_switch
@@ -324,3 +325,62 @@ def find_order(ctx: AuthContext, query: str) -> dict[str, Any]:
         titles = {p.id: p.title for p in db.list_products(conn)}
     matches = [o for o in orders if _title_matches(query, titles.get(o.product_id, ""))]
     return {"ok": True, "orders": [o.to_public_dict() for o in matches[:5]]}
+
+
+def get_return_window(ctx: AuthContext, store_id: int) -> dict[str, Any]:
+    """Return the effective return window for one store. Risk tier: read.
+
+    A store's own override takes precedence over the platform default
+    (facts.yaml, store_overrides.precedence). The result names the policy
+    document that sets the window so the answer can cite it. Store and
+    platform return windows are public help-center content, so this tool
+    needs no permission check.
+
+    Args:
+        ctx: The caller's auth context. Unused here, but every tool takes it.
+        store_id: The store's id.
+
+    Returns:
+        On success: {"ok": True, "store_id": int, "store_name": str,
+        "return_window_days": int, "source": "store_override" or
+        "platform_default", "policy_id": str, "counts_from": "delivery_date",
+        "counts_from_policy_id": "cw-returns"}. `policy_id` is the store's
+        policy document for an override and "cw-returns" otherwise.
+        If no store has that id: {"ok": False, "error": "not_found",
+        "reason": ...}.
+        If the policy document that should state the window is missing:
+        {"ok": False, "error": "policy_unavailable", "reason": ...}, so the
+        agent never cites a policy that does not exist.
+    """
+    with db.connection() as conn:
+        store = db.get_store(conn, store_id)
+    if store is None:
+        return {
+            "ok": False,
+            "error": "not_found",
+            "reason": f"No store with id {store_id} found.",
+        }
+    if store.return_window_days_override is not None:
+        source = "store_override"
+        window_days = store.return_window_days_override
+        policy_id = f"store-{store.slug}-policy"
+    else:
+        source = "platform_default"
+        window_days = load_facts()["return_window_days"]
+        policy_id = "cw-returns"
+    if not get_policy(ctx, policy_id)["ok"]:
+        return {
+            "ok": False,
+            "error": "policy_unavailable",
+            "reason": f"Policy '{policy_id}' for store {store_id} is not available.",
+        }
+    return {
+        "ok": True,
+        "store_id": store.id,
+        "store_name": store.name,
+        "return_window_days": window_days,
+        "source": source,
+        "policy_id": policy_id,
+        "counts_from": "delivery_date",
+        "counts_from_policy_id": "cw-returns",
+    }
