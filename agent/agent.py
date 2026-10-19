@@ -386,12 +386,17 @@ def get_policy(wrapper: RunContextWrapper[AuthContext], policy_id: str) -> dict[
 
 
 @function_tool
-def get_return_window(wrapper: RunContextWrapper[AuthContext], store_id: int) -> dict[str, Any]:
+def get_return_window(
+    wrapper: RunContextWrapper[AuthContext],
+    store_id: int | None = None,
+    store_name: str | None = None,
+) -> dict[str, Any]:
     """Get the return window in days for one store, with the policy id to cite.
 
-    A store's own override takes precedence over the platform default.
+    Pass the store's id or its name. A store's own override takes precedence
+    over the platform default.
     """
-    return _call(wrapper, hw_tools.get_return_window, store_id)
+    return _call(wrapper, hw_tools.get_return_window, store_id, store_name)
 
 
 @function_tool

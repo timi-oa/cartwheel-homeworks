@@ -327,8 +327,12 @@ def find_order(ctx: AuthContext, query: str) -> dict[str, Any]:
     return {"ok": True, "orders": [o.to_public_dict() for o in matches[:5]]}
 
 
-def get_return_window(ctx: AuthContext, store_id: int) -> dict[str, Any]:
+def get_return_window(
+    ctx: AuthContext, store_id: int | None = None, store_name: str | None = None
+) -> dict[str, Any]:
     """Return the effective return window for one store. Risk tier: read.
+
+    Identify the store by id or by name. If both are given, the id wins.
 
     A store's own override takes precedence over the platform default
     (facts.yaml, store_overrides.precedence). The result names the policy
@@ -339,6 +343,7 @@ def get_return_window(ctx: AuthContext, store_id: int) -> dict[str, Any]:
     Args:
         ctx: The caller's auth context. Unused here, but every tool takes it.
         store_id: The store's id.
+        store_name: The store's name or slug (case-insensitive exact match).
 
     Returns:
         On success: {"ok": True, "store_id": int, "store_name": str,
@@ -346,19 +351,32 @@ def get_return_window(ctx: AuthContext, store_id: int) -> dict[str, Any]:
         "platform_default", "policy_id": str, "counts_from": "delivery_date",
         "counts_from_policy_id": "cw-returns"}. `policy_id` is the store's
         policy document for an override and "cw-returns" otherwise.
-        If no store has that id: {"ok": False, "error": "not_found",
+        If neither store_id nor store_name is given:
+        {"ok": False, "error": "invalid_input", "reason": ...}.
+        If no store matches: {"ok": False, "error": "not_found",
         "reason": ...}.
         If the policy document that should state the window is missing:
         {"ok": False, "error": "policy_unavailable", "reason": ...}, so the
         agent never cites a policy that does not exist.
     """
+    if store_id is None and not (store_name and store_name.strip()):
+        return {
+            "ok": False,
+            "error": "invalid_input",
+            "reason": "Provide a store_id or a store_name.",
+        }
     with db.connection() as conn:
-        store = db.get_store(conn, store_id)
+        if store_id is not None:
+            store = db.get_store(conn, store_id)
+            label = f"id {store_id}"
+        else:
+            store = db.get_store_by_name(conn, store_name.strip())
+            label = f"name {store_name!r}"
     if store is None:
         return {
             "ok": False,
             "error": "not_found",
-            "reason": f"No store with id {store_id} found.",
+            "reason": f"No store with {label} found.",
         }
     if store.return_window_days_override is not None:
         source = "store_override"
@@ -372,7 +390,7 @@ def get_return_window(ctx: AuthContext, store_id: int) -> dict[str, Any]:
         return {
             "ok": False,
             "error": "policy_unavailable",
-            "reason": f"Policy '{policy_id}' for store {store_id} is not available.",
+            "reason": f"Policy '{policy_id}' for store {store.id} is not available.",
         }
     return {
         "ok": True,

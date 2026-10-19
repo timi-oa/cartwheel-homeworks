@@ -57,3 +57,22 @@ def test_missing_policy_doc_is_never_cited(
 def test_tool_is_registered_for_every_role(role: str) -> None:
     names = {getattr(t, "name", None) for t in TOOLS_BY_ROLE[role]}
     assert "get_return_window" in names
+
+
+def test_lookup_by_store_name_matches_lookup_by_id(world: dict) -> None:
+    by_name = tools.get_return_window(SHOPPER_1, store_name="northwind books")
+    by_id = tools.get_return_window(SHOPPER_1, 7)
+    assert by_name == by_id
+    assert by_name["return_window_days"] == 45
+
+
+def test_unknown_store_name_is_not_found(world: dict) -> None:
+    result = tools.get_return_window(SHOPPER_1, store_name="No Such Store")
+    assert result["ok"] is False
+    assert result["error"] == "not_found"
+
+
+def test_no_store_given_is_invalid_input(world: dict) -> None:
+    result = tools.get_return_window(SHOPPER_1)
+    assert result["ok"] is False
+    assert result["error"] == "invalid_input"
